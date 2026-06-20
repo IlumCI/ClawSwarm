@@ -12,6 +12,7 @@ from claw_swarm.agent.prompts import (
     TELEGRAM_SUMMARY_SYSTEM,
     build_director_system_prompt,
 )
+from claw_swarm.config import AgentConfig
 from claw_swarm.tools import run_claude_agent
 from claw_swarm.agent.model_config import resolve_llm, resolve_model
 from claw_swarm.agent.worker_agents import (
@@ -22,7 +23,10 @@ from claw_swarm.agent.worker_agents import (
 )
 
 
-def _build_worker_agents(worker_model: str | None = None) -> list:
+def _build_worker_agents(
+    worker_model: str | None = None,
+    agent_config: AgentConfig | None = None,
+) -> list:
     """
     Create the four ClawSwarm worker agents.
 
@@ -32,15 +36,51 @@ def _build_worker_agents(worker_model: str | None = None) -> list:
             (``"vllm/<model>"``, ``"hf/<model>"``).  When None the
             WORKER_MODEL_NAME / AGENT_MODEL env vars are used, then the
             built-in default.
+        agent_config: Optional agent config with per-worker overrides for
+            name, description, system_prompt, model, max_tokens, temperature.
 
     Returns:
         List of four worker Agent instances.
     """
+    cfg = agent_config or AgentConfig()
+    search_cfg = cfg.workers.get("search")
+    response_cfg = cfg.workers.get("response")
+    developer_cfg = cfg.workers.get("developer")
+    token_launch_cfg = cfg.workers.get("token_launch")
+
     return [
-        create_response_agent(model_name=worker_model),
-        create_developer_agent(model_name=worker_model),
-        create_search_agent(model_name=worker_model),
-        create_token_launch_agent(model_name=worker_model),
+        create_response_agent(
+            model_name=worker_model or (response_cfg.model if response_cfg else None),
+            agent_name=response_cfg.name if response_cfg and response_cfg.name else None,
+            agent_description=response_cfg.description if response_cfg else None,
+            system_prompt=response_cfg.system_prompt if response_cfg else None,
+            max_tokens=response_cfg.max_tokens if response_cfg else 0,
+            temperature=response_cfg.temperature if response_cfg else 0.0,
+        ),
+        create_developer_agent(
+            model_name=worker_model or (developer_cfg.model if developer_cfg else None),
+            agent_name=developer_cfg.name if developer_cfg and developer_cfg.name else None,
+            agent_description=developer_cfg.description if developer_cfg else None,
+            system_prompt=developer_cfg.system_prompt if developer_cfg else None,
+            max_tokens=developer_cfg.max_tokens if developer_cfg else 0,
+            temperature=developer_cfg.temperature if developer_cfg else 0.0,
+        ),
+        create_search_agent(
+            model_name=worker_model or (search_cfg.model if search_cfg else None),
+            agent_name=search_cfg.name if search_cfg and search_cfg.name else None,
+            agent_description=search_cfg.description if search_cfg else None,
+            system_prompt=search_cfg.system_prompt if search_cfg else None,
+            max_tokens=search_cfg.max_tokens if search_cfg else 0,
+            temperature=search_cfg.temperature if search_cfg else 0.0,
+        ),
+        create_token_launch_agent(
+            model_name=worker_model or (token_launch_cfg.model if token_launch_cfg else None),
+            agent_name=token_launch_cfg.name if token_launch_cfg and token_launch_cfg.name else None,
+            agent_description=token_launch_cfg.description if token_launch_cfg else None,
+            system_prompt=token_launch_cfg.system_prompt if token_launch_cfg else None,
+            max_tokens=token_launch_cfg.max_tokens if token_launch_cfg else 0,
+            temperature=token_launch_cfg.temperature if token_launch_cfg else 0.0,
+        ),
     ]
 
 
@@ -90,6 +130,7 @@ def create_agent(
     description: str | None = None,
     director_model: str | None = None,
     worker_model: str | None = None,
+    agent_config: AgentConfig | None = None,
 ) -> HierarchicalSwarm:
     """
     Create the ClawSwarm hierarchical swarm: a director agent plus worker agents
@@ -136,6 +177,11 @@ def create_agent(
             Falls back to AGENT_MODEL env var, then ``"gpt-5.4"``.
         worker_model:   Model spec for worker agents. Falls back to
             WORKER_MODEL_NAME env var, AGENT_MODEL, then ``"gpt-5.4"``.
+        agent_config:   Optional AgentConfig with per-agent overrides loaded from
+            ``claw_swarm_agents.yaml`` (or AGENT_CONFIG_PATH env var). Supports
+            ``director`` (name, description, system_prompt, model, max_tokens,
+            temperature) and ``workers`` dict with keys: search, response,
+            developer, token_launch.
 
     Returns:
         HierarchicalSwarm: Swarm ready for `.run(task)` calls.
@@ -146,19 +192,25 @@ def create_agent(
         >>> print(reply)
         'Python 3.12 introduces ...'
     """
-    name = agent_name or _agent_name()
-    desc = description or _agent_description()
+    cfg = agent_config or AgentConfig()
+    director_cfg = cfg.director
+
+    name = agent_name or (director_cfg.name if director_cfg.name else _agent_name())
+    desc = description or (director_cfg.description if director_cfg.description else _agent_description())
+
+    final_system_prompt = system_prompt or (director_cfg.system_prompt if director_cfg.system_prompt else None)
 
     director_system_prompt = build_director_system_prompt(
         agent_name=name,
-        system_prompt=system_prompt,
+        system_prompt=final_system_prompt,
     )
 
-    workers = _build_worker_agents(worker_model)
+    workers = _build_worker_agents(worker_model, agent_config=cfg)
 
-    # Resolve director model — may be a cloud name string or a local wrapper
+    final_director_model = director_model or (director_cfg.model if director_cfg.model else None)
+
     director_spec = (
-        director_model
+        final_director_model
         or os.environ.get("AGENT_MODEL", "").strip()
         or "gpt-5.4"
     )
@@ -166,16 +218,23 @@ def create_agent(
         director_spec, default="gpt-5.4"
     )
 
+    director_kwargs: dict[str, object] = {
+        "agent_name": name,
+        "agent_description": desc,
+        "system_prompt": director_system_prompt,
+        "max_loops": 1,
+    }
     if llm_obj is not None:
-        # Local model: build a director Agent with the custom llm wrapper and
-        # pass it directly to HierarchicalSwarm so it is used as-is.
-        director_agent = Agent(
-            agent_name=name,
-            agent_description=desc,
-            system_prompt=director_system_prompt,
-            llm=llm_obj,
-            max_loops=1,
-        )
+        director_kwargs["llm"] = llm_obj
+    else:
+        director_kwargs["model_name"] = cloud_model
+    if director_cfg.max_tokens > 0:
+        director_kwargs["max_tokens"] = director_cfg.max_tokens
+    if director_cfg.temperature > 0.0:
+        director_kwargs["temperature"] = director_cfg.temperature
+
+    if llm_obj is not None:
+        director_agent = Agent(**director_kwargs)
         return HierarchicalSwarm(
             name=name,
             description=desc,
@@ -186,7 +245,18 @@ def create_agent(
             director=director_agent,
         )
 
-    # Cloud model: pass the model name string directly (existing behaviour).
+    if director_cfg.max_tokens > 0 or director_cfg.temperature > 0.0:
+        director_agent = Agent(**director_kwargs)
+        return HierarchicalSwarm(
+            name=name,
+            description=desc,
+            agents=workers,
+            director_name=name,
+            director_system_prompt=director_system_prompt,
+            director_feedback_on=False,
+            director=director_agent,
+        )
+
     return HierarchicalSwarm(
         name=name,
         description=desc,
