@@ -229,35 +229,47 @@ def _run_claude_developer(tasks: str) -> str:
 def create_response_agent(
     *,
     agent_name: str = RESPONSE_AGENT_NAME,
+    agent_description: str = RESPONSE_AGENT_DESCRIPTION,
     system_prompt: str | None = None,
     model_name: str | None = None,
+    max_tokens: int = 0,
+    temperature: float = 0.0,
 ) -> Agent:
     """
     Create a response sub-agent for simple replies and general questions (no tools).
 
     Args:
         agent_name: Name for the agent instance.
+        agent_description: Description for the agent instance.
         system_prompt: Override the default response specialist prompt.
         model_name: Model to use; defaults to WORKER_MODEL_NAME, or AGENT_MODEL, or "gpt-5.4".
+        max_tokens: Maximum tokens in response (0 = default).
+        temperature: Sampling temperature (0.0 = default).
 
     Returns:
         Agent with no tools, for greetings and general Q&A.
     """
     prompt = system_prompt or RESPONSE_SYSTEM_PROMPT
+    description = agent_description or RESPONSE_AGENT_DESCRIPTION
     full_system = build_agent_system_prompt(
         name=agent_name,
-        description=RESPONSE_AGENT_DESCRIPTION,
+        description=description,
         system_prompt=prompt,
     )
     cloud_model, llm = resolve_llm(model_name, default="gpt-5.4")
-    return Agent(
-        agent_name=agent_name,
-        agent_description=RESPONSE_AGENT_DESCRIPTION,
-        system_prompt=full_system,
+    kwargs: dict[str, object] = {
+        "agent_name": agent_name,
+        "agent_description": description,
+        "system_prompt": full_system,
         **({"llm": llm} if llm else {"model_name": cloud_model}),
-        max_loops=1,
-        output_type="final",
-    )
+        "max_loops": 1,
+        "output_type": "final",
+    }
+    if max_tokens > 0:
+        kwargs["max_tokens"] = max_tokens
+    if temperature > 0.0:
+        kwargs["temperature"] = temperature
+    return Agent(**kwargs)
 
 
 # ---- Search worker ----
@@ -266,16 +278,22 @@ def create_response_agent(
 def create_search_agent(
     *,
     agent_name: str = SEARCH_AGENT_NAME,
+    agent_description: str = SEARCH_AGENT_DESCRIPTION,
     system_prompt: str | None = None,
     model_name: str | None = None,
+    max_tokens: int = 0,
+    temperature: float = 0.0,
 ) -> Agent:
     """
     Create a specialized search sub-agent that uses exa_search for web/semantic search.
 
     Args:
         agent_name: Name for the agent instance.
+        agent_description: Description for the agent instance.
         system_prompt: Override the default search specialist prompt.
         model_name: Model to use; defaults to WORKER_MODEL_NAME, or AGENT_MODEL, or "gpt-5.4".
+        max_tokens: Maximum tokens in response (0 = default).
+        temperature: Sampling temperature (0.0 = default).
 
     Returns:
         Agent configured with exa_search as its tool.
@@ -285,21 +303,27 @@ def create_search_agent(
             "swarms_tools (exa_search) is required for the search agent"
         )
     prompt = system_prompt or SEARCH_SYSTEM_PROMPT
+    description = agent_description or SEARCH_AGENT_DESCRIPTION
     full_system = build_agent_system_prompt(
         name=agent_name,
-        description=SEARCH_AGENT_DESCRIPTION,
+        description=description,
         system_prompt=prompt,
     )
     cloud_model, llm = resolve_llm(model_name, default="gpt-5.4")
-    return Agent(
-        agent_name=agent_name,
-        agent_description=SEARCH_AGENT_DESCRIPTION,
-        system_prompt=full_system,
+    kwargs: dict[str, object] = {
+        "agent_name": agent_name,
+        "agent_description": description,
+        "system_prompt": full_system,
         **({"llm": llm} if llm else {"model_name": cloud_model}),
-        tools=[exa_search, scrape_url, scrape_urls],
-        max_loops=1,
-        output_type="final",
-    )
+        "tools": [exa_search, scrape_url, scrape_urls],
+        "max_loops": 1,
+        "output_type": "final",
+    }
+    if max_tokens > 0:
+        kwargs["max_tokens"] = max_tokens
+    if temperature > 0.0:
+        kwargs["temperature"] = temperature
+    return Agent(**kwargs)
 
 
 # ---- Token launch worker ----
@@ -308,16 +332,22 @@ def create_search_agent(
 def create_token_launch_agent(
     *,
     agent_name: str = TOKEN_LAUNCH_AGENT_NAME,
+    agent_description: str = TOKEN_LAUNCH_AGENT_DESCRIPTION,
     system_prompt: str | None = None,
     model_name: str | None = None,
+    max_tokens: int = 0,
+    temperature: float = 0.0,
 ) -> Agent:
     """
     Create a specialized token launch sub-agent that can launch tokens and claim fees.
 
     Args:
         agent_name: Name for the agent instance.
+        agent_description: Description for the agent instance.
         system_prompt: Override the default token launch prompt.
         model_name: Model to use; defaults to WORKER_MODEL_NAME, or AGENT_MODEL, or "gpt-5.4".
+        max_tokens: Maximum tokens in response (0 = default).
+        temperature: Sampling temperature (0.0 = default).
 
     Returns:
         Agent configured with launch_token and claim_fees as tools.
@@ -327,21 +357,27 @@ def create_token_launch_agent(
         WALLET_PRIVATE_KEY for claim_fees.
     """
     prompt = system_prompt or TOKEN_LAUNCH_SYSTEM_PROMPT
+    description = agent_description or TOKEN_LAUNCH_AGENT_DESCRIPTION
     full_system = build_agent_system_prompt(
         name=agent_name,
-        description=TOKEN_LAUNCH_AGENT_DESCRIPTION,
+        description=description,
         system_prompt=prompt,
     )
     cloud_model, llm = resolve_llm(model_name, default="gpt-5.4")
-    return Agent(
-        agent_name=agent_name,
-        agent_description=TOKEN_LAUNCH_AGENT_DESCRIPTION,
-        system_prompt=full_system,
+    kwargs: dict[str, object] = {
+        "agent_name": agent_name,
+        "agent_description": description,
+        "system_prompt": full_system,
         **({"llm": llm} if llm else {"model_name": cloud_model}),
-        tools=[launch_token, claim_fees],
-        max_loops=1,
-        output_type="final",
-    )
+        "tools": [launch_token, claim_fees],
+        "max_loops": 1,
+        "output_type": "final",
+    }
+    if max_tokens > 0:
+        kwargs["max_tokens"] = max_tokens
+    if temperature > 0.0:
+        kwargs["temperature"] = temperature
+    return Agent(**kwargs)
 
 
 # ---- Developer worker ----
@@ -350,8 +386,11 @@ def create_token_launch_agent(
 def create_developer_agent(
     *,
     agent_name: str = DEVELOPER_AGENT_NAME,
+    agent_description: str = DEVELOPER_AGENT_DESCRIPTION,
     system_prompt: str | None = None,
     model_name: str | None = None,
+    max_tokens: int = 0,
+    temperature: float = 0.0,
 ) -> Agent:
     """
     Create a specialized developer sub-agent that uses Claude Code for implementation,
@@ -359,8 +398,11 @@ def create_developer_agent(
 
     Args:
         agent_name: Name for the agent instance.
+        agent_description: Description for the agent instance.
         system_prompt: Override the default developer specialist prompt.
         model_name: Model to use; defaults to WORKER_MODEL_NAME, or AGENT_MODEL, or "gpt-5.4".
+        max_tokens: Maximum tokens in response (0 = default).
+        temperature: Sampling temperature (0.0 = default).
 
     Returns:
         Agent configured with run_claude_developer (Claude Code) as its tool.
@@ -370,18 +412,24 @@ def create_developer_agent(
         underlying run_claude_agent calls.
     """
     prompt = system_prompt or DEVELOPER_SYSTEM_PROMPT
+    description = agent_description or DEVELOPER_AGENT_DESCRIPTION
     full_system = build_agent_system_prompt(
         name=agent_name,
-        description=DEVELOPER_AGENT_DESCRIPTION,
+        description=description,
         system_prompt=prompt,
     )
     cloud_model, llm = resolve_llm(model_name, default="gpt-5.4")
-    return Agent(
-        agent_name=agent_name,
-        agent_description=DEVELOPER_AGENT_DESCRIPTION,
-        system_prompt=full_system,
+    kwargs: dict[str, object] = {
+        "agent_name": agent_name,
+        "agent_description": description,
+        "system_prompt": full_system,
         **({"llm": llm} if llm else {"model_name": cloud_model}),
-        tools=[_run_claude_developer],
-        max_loops=1,
-        output_type="final",
-    )
+        "tools": [_run_claude_developer],
+        "max_loops": 1,
+        "output_type": "final",
+    }
+    if max_tokens > 0:
+        kwargs["max_tokens"] = max_tokens
+    if temperature > 0.0:
+        kwargs["temperature"] = temperature
+    return Agent(**kwargs)
