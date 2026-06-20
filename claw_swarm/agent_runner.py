@@ -16,6 +16,7 @@ import sys
 from typing import Callable, Optional
 from rich import print as rich_print
 from claw_swarm.agent import create_agent, summarize_for_telegram
+from claw_swarm.config import load_agent_config
 from claw_swarm.gateway.proto import messaging_gateway_pb2 as pb
 from claw_swarm.agent.prompts import CLAWSWARM_SYSTEM
 from claw_swarm.gateway.proto import (
@@ -194,8 +195,9 @@ async def run_agent_loop(
     Uses the Swarms agent from create_agent() (ClawSwarm prompt + Claude as tool). Runs until the task
     is cancelled (e.g. SIGINT/SIGTERM). Uses insecure gRPC by default.
     """
+    agent_cfg = load_agent_config()
     if agent is None:
-        agent = create_agent()
+        agent = create_agent(agent_config=agent_cfg)
     target = gateway_target or _get_gateway_target()
 
     _tls = os.environ.get("GATEWAY_TLS", "").lower() in (
