@@ -132,6 +132,8 @@ def cmd_run(args: argparse.Namespace) -> int:
         os.environ["AGENT_MODEL"] = args.model
     if args.worker_model:
         os.environ["WORKER_MODEL_NAME"] = args.worker_model
+    if args.agents_config:
+        os.environ["AGENT_CONFIG_PATH"] = args.agents_config
 
     gw_host = os.environ.get("GATEWAY_HOST", "[::]")
     gw_port = int(os.environ.get("GATEWAY_PORT", "50051"))
@@ -729,6 +731,17 @@ def main() -> int:
             "  --worker-model hf/microsoft/phi-2\n"
             "  --worker-model vllm/Qwen/Qwen-7B-Chat\n"
             "Overrides WORKER_MODEL_NAME env var."
+        ),
+    )
+    run_p.add_argument(
+        "--agents-config",
+        metavar="PATH",
+        default=None,
+        help=(
+            "Path to an agent config file with per-agent overrides "
+            "(name, description, system_prompt, model, max_tokens, temperature).\n"
+            "Defaults to claw_swarm_agents.yaml in the project root, "
+            "or the path set in AGENT_CONFIG_PATH env var."
         ),
     )
     run_p.set_defaults(func=cmd_run)
